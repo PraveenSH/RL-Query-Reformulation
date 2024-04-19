@@ -70,9 +70,14 @@ class ReinforceLoss(nn.Module):
         reward_tensor = torch.tensor(reward).view(-1, 1)
 
         logits = self.model(input_ids=input_ids, labels=output_ids).logits
+
         probs = F.softmax(logits, dim=-1)
-        log_max_probs, _ = torch.max(torch.log(probs), dim=-1)
-        loss = -torch.mul(log_max_probs, reward_tensor)
+
+        gathered_log_probs = torch.gather(torch.log(probs), 2, output_ids.unsqueeze(-1)).squeeze()
+
+        #log_max_probs, _ = torch.max(torch.log(probs), dim=-1)
+
+        loss = -torch.mul(gathered_log_probs, reward_tensor)
         final_loss += loss.mean()
   
     return final_loss / num_traj
