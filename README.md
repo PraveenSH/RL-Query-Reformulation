@@ -19,5 +19,5 @@ Framework uses sequence-to-sequence text generation model. It takes a search que
 Reward function used in this implementation increases the model's capability to paraphrase. This can be helpful in sparse retrieval methods such as BM25 based techniques since model generates a greater variety of paraphrased keywords. The reward function can be adjusted to optimize for other retrieval goals, such as enhancing the coverage of product categories in an e-commerce search or improving relevance in academic literature or medical research.
 
 # Model Usage
-1) Final trained model is released on hugging-face here.
+1) Final trained model is released on hugging-face [here](https://huggingface.co/prhegde/t5-query-reformulation-RL).
 2) Script to run the model inference - [code](https://github.com/PraveenSH/RL-Query-Reformulation/blob/master/src/t5_inference.py)
