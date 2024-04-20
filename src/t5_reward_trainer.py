@@ -15,7 +15,7 @@ loss_output = open("/home/ubuntu/QueryReformulationRL/losses.txt", 'w')
 save_path = "/home/ubuntu/QueryReformulationRL/models/reward_trained.pt"
 max_seq_len = 35
 batch_size = 10
-num_traj = 5
+num_traj = 3
 
 # Load the dataset from a TSV file
 def load_dataset(file_path):
@@ -56,14 +56,8 @@ class ReinforceLoss(nn.Module):
     self.reward_function = reward_function
     self.tokenizer = tokenizer
 
-  def forward(self, input_sequence):
-    # Get the model's output logits for the input and output sequences
-    input_ids = self.tokenizer(input_sequence, padding='max_length', max_length=max_seq_len, truncation=True, return_tensors='pt').input_ids
-    decoded_input_sequence = self.tokenizer.batch_decode(input_ids, skip_special_tokens=True)
+  def compute_loss(self, output_ids, input_ids, decoded_input_sequence):
 
-    final_loss = 0.0
-    for i in range(num_traj):
-        output_ids = self.model.generate(input_ids, max_length=max_seq_len, num_beams=1, top_k=0, do_sample=True)
         decoded_output_sequence = self.tokenizer.batch_decode(output_ids, skip_special_tokens=True)
 
         reward = self.reward_function(decoded_input_sequence, decoded_output_sequence)
@@ -75,12 +69,30 @@ class ReinforceLoss(nn.Module):
 
         gathered_log_probs = torch.gather(torch.log(probs), 2, output_ids.unsqueeze(-1)).squeeze()
 
-        #log_max_probs, _ = torch.max(torch.log(probs), dim=-1)
-
         loss = -torch.mul(gathered_log_probs, reward_tensor)
-        final_loss += loss.mean()
-  
-    return final_loss / num_traj
+        return loss.sum(dim=-1).mean()
+
+
+  def forward(self, input_sequence):
+    # Get the model's output logits for the input and output sequences
+    input_ids = self.tokenizer(input_sequence, padding='max_length', max_length=max_seq_len, truncation=True, return_tensors='pt').input_ids
+    decoded_input_sequence = self.tokenizer.batch_decode(input_ids, skip_special_tokens=True)
+
+    final_loss = 0.0
+    for i in range(num_traj-1):
+
+        #Disable top_k sampling to generate random samples - Exploration
+        output_ids = self.model.generate(input_ids, max_length=max_seq_len, num_beams=1, top_k=0, do_sample=True)
+        final_loss += self.compute_loss(output_ids, input_ids, decoded_input_sequence)
+
+    for i in range(num_traj):
+
+        #Enable top_k sampling to generate most likely samples - Exploitation
+        output_ids = self.model.generate(input_ids, max_length=max_seq_len, num_beams=1, do_sample=True)
+        final_loss += self.compute_loss(output_ids, input_ids, decoded_input_sequence)
+
+    print("loss", final_loss)
+    return final_loss / (2 * num_traj - 1)
 
 
 def train_with_reward(model, data_loader, optimizer, loss_fn):
@@ -102,7 +114,7 @@ def train_with_reward(model, data_loader, optimizer, loss_fn):
             if (steps%100) == 0:
                 print(steps, loss)
 
-            if (steps%500) == 0:
+            if (steps%100) == 0:
                 torch.save({'model_state_dict': model.state_dict(), 'optimizer_state_dict': optimizer.state_dict()}, save_path+"_"+str(epoch)+"_"+str(steps))
 
 
@@ -118,10 +130,10 @@ if __name__ == "__main__":
     checkpoint = torch.load("/home/ubuntu/QueryReformulationRL/models/pretrained.pt_1_45000")
     model.load_state_dict(checkpoint['model_state_dict'])
 
-    optimizer = torch.optim.Adam(model.parameters(), lr=1e-5)
+    optimizer = torch.optim.Adam(model.parameters(), lr=5e-6)
     loss_fn = ReinforceLoss(model, reward_function, tokenizer)
 
     dataset = MyDataset(input_sequences)
-    data_loader = DataLoader(dataset, batch_size=5, shuffle=True)
+    data_loader = DataLoader(dataset, batch_size=batch_size, shuffle=True)
 
     train_with_reward(model, data_loader, optimizer, loss_fn)
