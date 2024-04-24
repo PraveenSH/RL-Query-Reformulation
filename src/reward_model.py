@@ -25,7 +25,15 @@ def paraphrase_reward(sentence1, sentence2, stop_words, model):
         words2 = set(sentence2[i].lower().split())
 
         weight = 0.0
-        total = 0
+        total = 0.0
+
+        dups = len(sentence2[i].lower().split())
+        uniques = len(words2)
+        rep_reward = 0.0
+
+        if dups > 0:
+            rep_reward = uniques / dups
+
         for word in words2:
 
             if word in stop_words:
@@ -34,14 +42,15 @@ def paraphrase_reward(sentence1, sentence2, stop_words, model):
             if word in words1:
                 continue
 
+            total += 1.0
             word_emb = model.encode(word).reshape(1, -1)
-            total += 1
             weight += (cosine_similarity(sent_emb, word_emb)[0][0] + 1) / 2
 
+        alpha = 0.3
         if total == 0:
-            rewards.append(0.0)
+            rewards.append(rep_reward * alpha)
         else:
-            rewards.append(weight / total)
+            rewards.append( (1-alpha) * (weight / total) + alpha * rep_reward)
 
     return rewards
 
@@ -49,8 +58,8 @@ def paraphrase_reward(sentence1, sentence2, stop_words, model):
 if __name__ == "__main__":
 
     model = SentenceTransformer('sentence-transformers/all-MiniLM-L6-v2')
-    sentence1 = ["bake a perfect cookie"]
-    sentence2 = ["perfection cookies cookie baking great good cookie good cookies"]
+    sentence1 = ["double door fridge"]
+    sentence2 = ["double door fridge freezer double door fridge freezer double door fridge freezer double door fridge freezer double door fridge"]
 
     stop_words = set(stopwords.words('english'))
     print(similarity_reward(sentence1, sentence2, model), paraphrase_reward(sentence1, sentence2, stop_words, model))
